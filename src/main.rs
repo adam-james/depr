@@ -57,6 +57,12 @@ impl Specs {
         }
         true
     }
+
+    fn hunk_limits(&self, start_line: usize, end_line: usize) -> (usize, usize) {
+        let start = std::cmp::max(self.start_line, start_line);
+        let end = std::cmp::min(self.end_line, end_line);
+        (start, end)
+    }
 }
 
 fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
@@ -76,7 +82,6 @@ fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
     hunks.sort_by(|a, b| a.final_signature().when().cmp(&b.final_signature().when()));
 
     for hunk in hunks {
-        let commit_id = hunk.final_commit_id();
         let seconds = hunk.final_signature().when().seconds();
         let formatted_time = format_seconds(seconds);
 
@@ -84,9 +89,10 @@ fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
         let end_line = start_line + hunk.lines_in_hunk() as usize;
 
         if specs.overlaps(start_line, end_line) {
-            println!("{} -- {}", commit_id, formatted_time);
-            println!("Lines {} to {}", start_line + 1, end_line + 1);
-            let hunk_lines = gemfile_lock_lines[start_line..end_line].join("\n");
+            println!("Updated {} on {}.", time_passed(seconds), formatted_time);
+            let (start, end) = specs.hunk_limits(start_line, end_line);
+            println!("Lines {} through {}.", start + 1, end);
+            let hunk_lines = gemfile_lock_lines[start..end].join("\n");
             println!("{}", hunk_lines);
             println!();
         }
@@ -95,9 +101,30 @@ fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn time_passed(seconds: i64) -> String {
+    let now = Local::now();
+    let then = Local.timestamp_opt(seconds, 0).unwrap();
+    let duration = now.signed_duration_since(then);
+    let days = duration.num_days();
+    let hours = duration.num_hours();
+    let minutes = duration.num_minutes();
+
+    if days > 0 {
+        return format!("{} days ago", days);
+    }
+    if hours > 0 {
+        return format!("{} hours ago", hours);
+    }
+    if minutes > 0 {
+        return format!("{} minutes ago", minutes);
+    }
+
+    "just now".to_string()
+}
+
 fn format_seconds(seconds: i64) -> String {
     let local_time = Local.timestamp_opt(seconds, 0).unwrap();
-    local_time.format("%Y-%m-%d %H:%M:%S %Z").to_string()
+    local_time.format("%B %d, %Y").to_string()
 }
 
 fn read_file_lines(path: PathBuf) -> Vec<String> {
