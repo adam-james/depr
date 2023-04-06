@@ -28,20 +28,7 @@ struct Specs {
 }
 
 impl Specs {
-    fn from_lines(lines: &Vec<String>) -> Specs {
-        // This is an assumption for now.
-        let start_line = 3;
-        let mut end_line = start_line;
-
-        // Find the first empty line. That is the end of the specs section.
-        // This is also an assumption for now.
-        for (i, line) in lines.iter().enumerate() {
-            if line.is_empty() {
-                end_line = i;
-                break;
-            }
-        }
-
+    fn new(start_line: usize, end_line: usize) -> Self {
         Specs {
             start_line,
             end_line,
@@ -65,6 +52,50 @@ impl Specs {
     }
 }
 
+struct AllSpecs {
+    specs: Vec<Specs>,
+}
+
+impl AllSpecs {
+    fn from_lines(lines: &Vec<String>) -> Self {
+        let mut specs = Vec::new();
+        let mut start_line = None;
+        let mut end_line = 0;
+        for (i, line) in lines.iter().enumerate() {
+            if line.contains("specs:") {
+                start_line = Some(i + 1);
+            }
+            if line.is_empty() {
+                if let Some(start) = start_line {
+                    end_line = i;
+                    specs.push(Specs::new(start, end_line));
+                    start_line = None;
+                }
+            }
+        }
+        AllSpecs { specs }
+    }
+
+    fn overlaps(&self, start_line: usize, end_line: usize) -> bool {
+        self.specs
+            .iter()
+            .any(|spec| spec.overlaps(start_line, end_line))
+    }
+
+    fn hunk_limits(&self, start_line: usize, end_line: usize) -> (usize, usize) {
+        let mut start = 0;
+        let mut end = 0;
+        for spec in self.specs.iter() {
+            if spec.overlaps(start_line, end_line) {
+                let (s, e) = spec.hunk_limits(start_line, end_line);
+                start = s;
+                end = e;
+            }
+        }
+        (start, end)
+    }
+}
+
 fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
     let project_path = Path::new(&project_dir);
     let gemfile_lock = "Gemfile.lock";
@@ -73,7 +104,7 @@ fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
     let git_path = project_path.join(git_dir);
 
     let gemfile_lock_lines = read_file_lines(project_path.join(gemfile_lock));
-    let specs = Specs::from_lines(&gemfile_lock_lines);
+    let all_specs = AllSpecs::from_lines(&gemfile_lock_lines);
 
     let repo = Repository::open(git_path).unwrap();
     // Instead of `None` you can also pass a `git2::BlameOptions` object.
@@ -88,9 +119,9 @@ fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
         let start_line = hunk.final_start_line() - 1 as usize;
         let end_line = start_line + hunk.lines_in_hunk() as usize;
 
-        if specs.overlaps(start_line, end_line) {
+        if all_specs.overlaps(start_line, end_line) {
             println!("Updated {} on {}.", time_passed(seconds), formatted_time);
-            let (start, end) = specs.hunk_limits(start_line, end_line);
+            let (start, end) = all_specs.hunk_limits(start_line, end_line);
             println!("Lines {} through {}.", start + 1, end);
             let hunk_lines = gemfile_lock_lines[start..end].join("\n");
             println!("{}", hunk_lines);
