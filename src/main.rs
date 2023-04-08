@@ -30,8 +30,7 @@ fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
     let git_dir = ".git";
     let git_path = project_path.join(git_dir);
 
-    let spec_lines = get_spec_lines(project_path.join(gemfile_lock));
-    let gemfile_lock_lines = read_file_lines(project_path.join(gemfile_lock));
+    let (spec_lines, gemfile_lock_lines) = get_spec_lines(project_path.join(gemfile_lock));
 
     let repo = Repository::open(git_path).unwrap();
     // Instead of `None` you can also pass a `git2::BlameOptions` object.
@@ -77,15 +76,9 @@ fn format_seconds(seconds: i64) -> String {
     local_time.format("%Y-%m-%d").to_string()
 }
 
-fn read_file_lines(path: PathBuf) -> Vec<String> {
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader.lines().map(|l| l.unwrap()).collect();
-    lines
-}
-
-fn get_spec_lines(path: PathBuf) -> HashSet<usize> {
+fn get_spec_lines(path: PathBuf) -> (HashSet<usize>, Vec<String>) {
     let mut set = HashSet::new();
+    let mut lines = Vec::new();
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
     let re = Regex::new(r"\(\d+\.\d+\.\d+\.?\d?\)").unwrap();
@@ -95,8 +88,9 @@ fn get_spec_lines(path: PathBuf) -> HashSet<usize> {
             if re.is_match(line.as_str()) {
                 set.insert(i);
             }
+            lines.push(line);
         }
     }
 
-    set
+    (set, lines)
 }
