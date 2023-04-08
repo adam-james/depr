@@ -1,4 +1,5 @@
 use chrono::{Local, TimeZone};
+use clap::Parser;
 use git2::Repository;
 use regex::Regex;
 use std::collections::{BTreeMap, HashSet};
@@ -7,20 +8,18 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 fn main() {
-    let project_dir = parse();
+    let cli = Cli::parse();
+    let project_dir = cli.directory;
     if let Err(e) = run(project_dir) {
         println!("Error: {}", e);
     }
 }
 
-fn parse() -> String {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        panic!("Please provide a project directory.");
-    }
-
-    let project_dir = args[1].clone();
-    project_dir
+/// A program to see when you last updated your specs in your Gemfile.lock.
+#[derive(Parser)]
+struct Cli {
+    /// The directory of the bundler project you want to check.
+    directory: String,
 }
 
 fn run(project_dir: String) -> Result<(), Box<dyn std::error::Error>> {
